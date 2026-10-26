@@ -33,7 +33,18 @@ npx expo run:ios --device       # or: npx expo run:android --device
 # or build in the cloud with EAS: eas build --profile development --platform ios
 ```
 
-`expo run:*` generates the native `ios/` and `android/` projects with the camera and OCR modules. A physical device is needed to scan real labels (simulators have no camera). iOS builds need Xcode; Android builds need the Android SDK. The bundle identifier and package name in `app.json` (`com.prexpire.app`) are placeholders; change them before publishing. On Android the ML Kit text model comes from Google Play services, and `plugins/withMlKitOcrModel.js` asks Play to download it at install time.
+`expo run:*` generates the native `ios/` and `android/` projects with the camera and OCR modules. A physical device is needed to scan real labels (simulators have no camera). iOS builds need Xcode; Android builds need the Android SDK. The bundle identifier and Android package are `com.ttommy0388.prexpire`. On Android the ML Kit text model comes from Google Play services, and `plugins/withMlKitOcrModel.js` asks Play to download it at install time.
+
+**Installing on an iPhone without a Mac (EAS Build).** Expo builds the app in the cloud and gives you a link to install it. It needs a free Expo account and a paid Apple Developer Program membership ($99/year), because Apple only lets apps outside the App Store onto iPhones that are registered to a developer account. From any computer with Node.js:
+
+```bash
+npm install -g eas-cli
+eas login                                   # Expo account
+eas device:create                           # open the link on the iPhone to register it
+eas build --profile preview --platform ios  # sign in with the Apple ID when asked
+```
+
+When the build finishes, open its link on the iPhone and tap Install. On iOS 16 and later, turn on Settings → Privacy & Security → Developer Mode the first time. The `preview` profile is a standalone app; the `development` profile is a dev client that loads code from `npx expo start`.
 
 **Tests.** `npm test` runs the date parser and crop tests with Node's built-in test runner. `npm run typecheck` runs TypeScript.
 
