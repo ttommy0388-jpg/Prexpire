@@ -1,9 +1,12 @@
-import { useState } from 'react';
-import { ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Animated, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { colors, space } from '../theme';
-import { categories, upcoming, type ArtKey, type UpcomingItem } from '../data';
+import { categories, type ArtKey } from '../data';
+import { CATEGORY_NAMES, expiryPhrase, expiryPill, useItems, type Item } from '../items';
+import { categoryArt as itemCategoryArt } from '../components/ResultSheet';
 import {
   AttentionCard,
   BottomNav,
@@ -35,16 +38,30 @@ function categoryArt(art: ArtKey, size: number) {
   }
 }
 
-function itemArt(art: UpcomingItem['art']) {
-  if (art === 'milk') return <MilkArt size={30} />;
-  if (art === 'pill') return <PillArt size={30} />;
-  return <BreadArt size={30} />;
+function itemArt(item: Item) {
+  // The prototype's sample items keep their own illustrations.
+  if (item.id === 'sample-oat') return <MilkArt size={30} />;
+  if (item.id === 'sample-ibu') return <PillArt size={30} />;
+  if (item.id === 'sample-bread') return <BreadArt size={30} />;
+  return itemCategoryArt(item.category, 30);
 }
 
-export function HomeScreen({ onNavigate }: { onNavigate?: (route: string) => void }) {
+// How many items "Coming up next" shows, soonest first.
+const UPCOMING_COUNT = 4;
+
+type HomeProps = {
+  onNavigate?: (route: string) => void;
+  // A short confirmation, e.g. after an item was added from the scanner.
+  notice?: string | null;
+  onNoticeDone?: () => void;
+};
+
+export function HomeScreen({ onNavigate, notice, onNoticeDone }: HomeProps) {
   const insets = useSafeAreaInsets();
   const layout = useLayout();
   const [activeTab, setActiveTab] = useState<TabId>('home');
+  const { items, saved } = useItems();
+  const upcoming = useMemo(() => [...items].sort((a, b) => a.expiresOn.localeCompare(b.expiresOn)).slice(0, UPCOMING_COUNT), [items]);
 
   const go = (route: string) => {
     Haptics.selectionAsync().catch(() => {});
@@ -91,7 +108,7 @@ export function HomeScreen({ onNavigate }: { onNavigate?: (route: string) => voi
             tint={c.tint}
             width={tileWidth}
             name={c.name}
-            sub={c.sub}
+            sub={c.count === undefined ? c.sub : `${c.count + saved.filter((i) => i.category === c.id).length} items`}
             status={c.status}
             art={categoryArt(c.art, compact ? 56 : 64)}
             compact={compact}
@@ -106,17 +123,20 @@ export function HomeScreen({ onNavigate }: { onNavigate?: (route: string) => voi
     <>
       <SectionHeader title="Coming up next" action="View all" onAction={() => go('items')} first={first} />
       <View style={styles.list}>
-        {upcoming.map((item) => (
-          <ExpiryRow
-            key={item.id}
-            art={itemArt(item.art)}
-            title={item.title}
-            sub={item.sub}
-            pill={item.pill}
-            tone={item.tone}
-            onPress={() => go(`item:${item.id}`)}
-          />
-        ))}
+        {upcoming.map((item) => {
+          const { pill, tone } = expiryPill(item.expiresOn);
+          return (
+            <ExpiryRow
+              key={item.id}
+              art={itemArt(item)}
+              title={item.name}
+              sub={[CATEGORY_NAMES[item.category], expiryPhrase(item.expiresOn)]}
+              pill={pill}
+              tone={tone}
+              onPress={() => go(`item:${item.id}`)}
+            />
+          );
+        })}
       </View>
     </>
   );
@@ -162,7 +182,31 @@ export function HomeScreen({ onNavigate }: { onNavigate?: (route: string) => voi
         }}
         onScan={() => go('scan')}
       />
+      {notice && <Toast key={notice} text={notice} bottom={bottomClearance} onDone={onNoticeDone} />}
     </View>
+  );
+}
+
+function Toast({ text, bottom, onDone }: { text: string; bottom: number; onDone?: () => void }) {
+  const opacity = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const anim = Animated.sequence([
+      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.delay(2600),
+      Animated.timing(opacity, { toValue: 0, duration: 220, useNativeDriver: true }),
+    ]);
+    anim.start(({ finished }) => finished && onDone?.());
+    return () => anim.stop();
+  }, [opacity, onDone]);
+  return (
+    <Animated.View pointerEvents="none" style={[styles.toastWrap, { bottom, opacity }]} accessibilityLiveRegion="polite">
+      <View style={styles.toast}>
+        <Ionicons name="checkmark-circle" size={18} color={colors.mint} />
+        <Text style={styles.toastText} numberOfLines={2}>
+          {text}
+        </Text>
+      </View>
+    </Animated.View>
   );
 }
 
@@ -177,4 +221,18 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   // 8px between "Coming up next" rows.
   list: { gap: 8 },
+  toastWrap: { position: 'absolute', left: 16, right: 16, alignItems: 'center' },
+  toast: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    maxWidth: 460,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    borderRadius: 999,
+    backgroundColor: '#0D2E28',
+    borderWidth: 1,
+    borderColor: 'rgba(46,232,182,0.45)',
+  },
+  toastText: { color: colors.text, fontSize: 14, fontWeight: '500', flexShrink: 1 },
 });

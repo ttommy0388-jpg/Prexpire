@@ -11,7 +11,23 @@
     },
     "ios": {
       "supportsTablet": true,
-      "requireFullScreen": false
-    }
+      "requireFullScreen": false,
+      "bundleIdentifier": "com.prexpire.app"
+    },
+    "android": {
+      "package": "com.prexpire.app"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Prexpire uses your camera to read expiry dates on packaging. Images are processed on your device and never uploaded.",
+          "microphonePermission": false,
+          "recordAudioAndroid": false
+        }
+      ],
+      "expo-localization",
+      "./plugins/withMlKitOcrModel"
+    ]
   }
 }
