@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Animated, Easing, Image, StyleSheet, Text, View } from 'react-native';
+import { Animated, Easing, Image, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { PrexpireMark } from '../components/Art';
 
 const wordmark = require('../../assets/wordmark.png');
@@ -7,6 +7,9 @@ const wordmark = require('../../assets/wordmark.png');
 export function LaunchScreen({ onDone, hold = 1400 }: { onDone: () => void; hold?: number }) {
   const enter = useRef(new Animated.Value(0)).current;
   const fade = useRef(new Animated.Value(1)).current;
+  const { height } = useWindowDimensions();
+  // Shrink the mark on short screens (phone landscape) so the stack stays centered and unclipped.
+  const markSize = height < 500 ? 112 : 150;
 
   useEffect(() => {
     Animated.sequence([
@@ -23,7 +26,7 @@ export function LaunchScreen({ onDone, hold = 1400 }: { onDone: () => void; hold
       <View style={[styles.shape, { top: -120, left: -150 }]} />
       <View style={[styles.shape, { bottom: -150, right: -140 }]} />
       <Animated.View style={{ alignItems: 'center', opacity: enter, transform: [{ scale }] }}>
-        <PrexpireMark size={150} />
+        <PrexpireMark size={markSize} />
         <Image source={wordmark} style={styles.wordmark} resizeMode="contain" accessibilityLabel="Prexpire" />
         <Text style={styles.tagline}>Know before it expires.</Text>
       </Animated.View>

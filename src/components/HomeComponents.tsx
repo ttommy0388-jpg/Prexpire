@@ -1,14 +1,14 @@
 import type { ReactNode } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, pills, radius, space, tints, type, type Tint, type Tone } from '../theme';
 
 const wordmark = require('../../assets/wordmark.png');
 
-export function Header({ badge, onMenu, onBell }: { badge: number; onMenu: () => void; onBell: () => void }) {
+export function Header({ badge, gutter = space.gutter, onMenu, onBell }: { badge: number; gutter?: number; onMenu: () => void; onBell: () => void }) {
   return (
-    <View style={s.header}>
+    <View style={[s.header, { paddingHorizontal: gutter }]}>
       <Pressable onPress={onMenu} hitSlop={10} accessibilityRole="button" accessibilityLabel="Menu" style={s.headerBtn}>
         <Ionicons name="menu" size={30} color={colors.text} />
       </Pressable>
@@ -40,9 +40,11 @@ export function AttentionCard({ title, subtitle, onPress }: { title: string; sub
   );
 }
 
-export function SectionHeader({ title, action, onAction }: { title: string; action: string; onAction: () => void }) {
+type SectionHeaderProps = { title: string; action: string; first?: boolean; onAction: () => void };
+
+export function SectionHeader({ title, action, first = false, onAction }: SectionHeaderProps) {
   return (
-    <View style={s.section}>
+    <View style={[s.section, first && s.sectionFirst]}>
       <Text style={s.sectionTitle}>{title}</Text>
       <Pressable onPress={onAction} hitSlop={8} style={s.sectionAction}>
         <Text style={s.sectionLink}>{action}</Text>
@@ -73,8 +75,14 @@ export function CategoryTile({ tint, art, name, sub, status, width, compact = fa
         end={{ x: 0.5, y: 1 }}
         style={[s.tile, compact && s.tileCompact, { borderColor: t.border }]}
       >
-        <View style={[s.tileArt, compact && s.tileArtCompact]}>{art}</View>
-        <Text style={[s.tileName, compact && s.tileNameCompact]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.85}>
+        <View style={[s.tileArt, compact && s.tileArtCompact, !status && s.tileArtTight]}>{art}</View>
+        {/* Tiles without a status line (Add category) have room for a two-line name on narrow tiles. */}
+        <Text
+          style={[s.tileName, compact && s.tileNameCompact]}
+          numberOfLines={status ? 1 : 2}
+          adjustsFontSizeToFit={!!status}
+          minimumFontScale={0.85}
+        >
           {name}
         </Text>
         <Text style={[s.tileSub, compact && s.textCompact]} numberOfLines={1}>
@@ -109,7 +117,7 @@ export function ExpiryRow({ art, title, sub, pill, tone, onPress }: ExpiryRowPro
         <Text style={s.rowTitle} numberOfLines={1}>
           {title}
         </Text>
-        <Text style={s.rowSub} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.88}>
+        <Text style={s.rowSub} numberOfLines={2}>
           {sub.join('  •  ')}
         </Text>
       </View>
@@ -130,9 +138,23 @@ const tabs: { id: TabId; label: string; icon: keyof typeof Ionicons.glyphMap; ic
   { id: 'settings', label: 'Settings', icon: 'settings-sharp', iconOn: 'settings-sharp' },
 ];
 
-type BottomNavProps = { active: TabId; badge: number; bottomInset: number; onTab: (id: TabId) => void; onScan: () => void };
+type BottomNavProps = {
+  active: TabId;
+  badge: number;
+  insets: { bottom: number; left: number; right: number };
+  maxWidth?: number;
+  onTab: (id: TabId) => void;
+  onScan: () => void;
+};
 
-export function BottomNav({ active, badge, bottomInset, onTab, onScan }: BottomNavProps) {
+// Distance from the bottom edge to the nav pill, and the space content must leave for it.
+export const navOffset = (bottomInset: number) => Math.max(bottomInset - 6, 12);
+export const NAV_HEIGHT = 68;
+
+export function BottomNav({ active, badge, insets, maxWidth = 560, onTab, onScan }: BottomNavProps) {
+  // Narrow phones give the five tabs a little more room so labels are not clipped.
+  const narrow = useWindowDimensions().width < 360;
+  const sideMargin = narrow ? 8 : 16;
   const renderTab = (tab: (typeof tabs)[number]) => {
     const selected = tab.id === active;
     return (
@@ -152,7 +174,12 @@ export function BottomNav({ active, badge, bottomInset, onTab, onScan }: BottomN
             </View>
           )}
         </View>
-        <Text style={[s.tabLabel, { color: selected ? colors.mint : colors.textMuted }]} numberOfLines={1}>
+        <Text
+          style={[s.tabLabel, narrow && s.tabLabelNarrow, { color: selected ? colors.mint : colors.textMuted }]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.85}
+        >
           {tab.label}
         </Text>
       </Pressable>
@@ -160,8 +187,11 @@ export function BottomNav({ active, badge, bottomInset, onTab, onScan }: BottomN
   };
 
   return (
-    <View pointerEvents="box-none" style={[s.navWrap, { bottom: Math.max(bottomInset - 6, 12) }]}>
-      <View style={s.navShadow}>
+    <View
+      pointerEvents="box-none"
+      style={[s.navWrap, { bottom: navOffset(insets.bottom), left: sideMargin + insets.left, right: sideMargin + insets.right }]}
+    >
+      <View style={[s.navShadow, { maxWidth }]}>
         <View style={[s.nav, s.navFallback]}>
           {renderTab(tabs[0])}
           {renderTab(tabs[1])}
@@ -181,7 +211,7 @@ export function BottomNav({ active, badge, bottomInset, onTab, onScan }: BottomN
 
 const s = StyleSheet.create({
   pressed: { opacity: 0.75, transform: [{ scale: 0.98 }] },
-  header: { height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: space.gutter },
+  header: { height: 56, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   headerBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   wordmark: { width: 118, height: 30 },
   badge: {
@@ -200,9 +230,9 @@ const s = StyleSheet.create({
   },
   badgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
   alert: {
-    marginHorizontal: space.gutter,
     marginTop: 4,
-    height: 58,
+    minHeight: 58,
+    paddingVertical: 7,
     borderRadius: radius.alert,
     borderWidth: 1,
     borderColor: '#5C4512',
@@ -220,17 +250,18 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: space.gutter,
     marginTop: 16,
     marginBottom: 9,
   },
-  sectionTitle: { color: colors.text, ...type.title },
+  sectionFirst: { marginTop: 4 },
+  sectionTitle: { color: colors.text, ...type.title, flexShrink: 1 },
   sectionAction: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   sectionLink: { color: colors.mint, ...type.link },
-  tile: { height: 156, borderRadius: radius.card, borderWidth: 1, overflow: 'hidden', alignItems: 'center', paddingHorizontal: 12, paddingTop: 12 },
+  tile: { height: 156, borderRadius: radius.card, borderWidth: 1, overflow: 'hidden', alignItems: 'center', paddingHorizontal: 8, paddingTop: 12 },
   tileArt: { height: 68, width: '100%', alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
-  tileCompact: { height: 140, paddingHorizontal: 6, paddingTop: 10 },
+  tileCompact: { height: 146, paddingHorizontal: 6, paddingTop: 10 },
   tileArtCompact: { height: 58, marginBottom: 6 },
+  tileArtTight: { marginBottom: 2 },
   tileNameCompact: { fontSize: 14 },
   textCompact: { fontSize: 12.5 },
   tileName: { color: colors.text, ...type.tileName, textAlign: 'center' },
@@ -240,8 +271,8 @@ const s = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4 },
   statusText: { ...type.body, fontWeight: '500' },
   row: {
-    height: 53,
-    marginHorizontal: space.gutter,
+    minHeight: 53,
+    paddingVertical: 6,
     borderRadius: radius.row,
     borderWidth: 1,
     borderColor: colors.surfaceBorder,
@@ -257,8 +288,8 @@ const s = StyleSheet.create({
   rowSub: { color: colors.textMuted, ...type.rowSub, fontSize: 12.5, marginTop: 1 },
   pill: { height: 30, paddingHorizontal: 11, borderRadius: radius.pill, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   pillText: { ...type.pill },
-  navWrap: { position: 'absolute', left: 16, right: 16, alignItems: 'stretch' },
-  navShadow: { borderRadius: 34, shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10 },
+  navWrap: { position: 'absolute', alignItems: 'center' },
+  navShadow: { width: '100%', borderRadius: 34, shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10 },
   nav: {
     height: 68,
     borderRadius: 34,
@@ -273,6 +304,7 @@ const s = StyleSheet.create({
   navFallback: { backgroundColor: 'rgba(12,24,27,0.72)', backdropFilter: 'blur(22px) saturate(1.4)' } as object,
   tab: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 3, height: 68 },
   tabLabel: { ...type.tab },
+  tabLabelNarrow: { fontSize: 10.5 },
   scan: { width: 50, height: 50, borderRadius: 25, backgroundColor: colors.scan, alignItems: 'center', justifyContent: 'center' },
   scanLine: { position: 'absolute', width: 16, height: 2.5, borderRadius: 2, backgroundColor: colors.scanInk },
 });
