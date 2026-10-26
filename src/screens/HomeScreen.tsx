@@ -5,21 +5,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { colors, space } from '../theme';
 import { categories, type ArtKey } from '../data';
-import { CATEGORY_NAMES, expiryPhrase, expiryPill, useItems, type Item } from '../items';
-import { categoryArt as itemCategoryArt } from '../components/ResultSheet';
-import {
-  AttentionCard,
-  BottomNav,
-  CategoryTile,
-  ExpiryRow,
-  Header,
-  NAV_HEIGHT,
-  navOffset,
-  SectionHeader,
-  type TabId,
-} from '../components/HomeComponents';
+import { useItems } from '../items';
+import { useSettings } from '../settings';
+import { expiryStatus } from '../preferences';
+import { AttentionCard, CategoryTile, Header, NAV_HEIGHT, navOffset, SectionHeader } from '../components/HomeComponents';
+import { ItemRow } from '../components/ItemRow';
 import { gridFor, useLayout } from '../layout';
-import { AddArt, AppleArt, BreadArt, CapsuleArt, HouseArt, JarArt, MilkArt, PillArt, PumpBottleArt } from '../components/Art';
+import { AddArt, AppleArt, CapsuleArt, HouseArt, JarArt, PumpBottleArt } from '../components/Art';
 
 function categoryArt(art: ArtKey, size: number) {
   switch (art) {
@@ -38,30 +30,41 @@ function categoryArt(art: ArtKey, size: number) {
   }
 }
 
-function itemArt(item: Item) {
-  // The prototype's sample items keep their own illustrations.
-  if (item.id === 'sample-oat') return <MilkArt size={30} />;
-  if (item.id === 'sample-ibu') return <PillArt size={30} />;
-  if (item.id === 'sample-bread') return <BreadArt size={30} />;
-  return itemCategoryArt(item.category, 30);
-}
-
 // How many items "Coming up next" shows, soonest first.
 const UPCOMING_COUNT = 4;
 
 type HomeProps = {
   onNavigate?: (route: string) => void;
+  // Reminders due, shown on the bell.
+  badge: number;
   // A short confirmation, e.g. after an item was added from the scanner.
   notice?: string | null;
   onNoticeDone?: () => void;
 };
 
-export function HomeScreen({ onNavigate, notice, onNoticeDone }: HomeProps) {
+export function HomeScreen({ onNavigate, badge, notice, onNoticeDone }: HomeProps) {
   const insets = useSafeAreaInsets();
   const layout = useLayout();
-  const [activeTab, setActiveTab] = useState<TabId>('home');
   const { items, saved } = useItems();
-  const upcoming = useMemo(() => [...items].sort((a, b) => a.expiresOn.localeCompare(b.expiresOn)).slice(0, UPCOMING_COUNT), [items]);
+  const { settings, motion } = useSettings();
+  const { warningDays, showExpired, showSamples } = settings;
+  const upcoming = useMemo(
+    () =>
+      items
+        .filter((i) => showExpired || expiryStatus(i.expiresOn, warningDays) !== 'expired')
+        .sort((a, b) => a.expiresOn.localeCompare(b.expiresOn))
+        .slice(0, UPCOMING_COUNT),
+    [items, showExpired, warningDays],
+  );
+  // Expired items, and items expiring within the warning period chosen in Settings.
+  const attention = useMemo(() => {
+    const statuses = items.map((i) => ({ category: i.category, status: expiryStatus(i.expiresOn, warningDays) }));
+    return {
+      expired: statuses.filter((x) => x.status === 'expired').length,
+      soon: statuses.filter((x) => x.status === 'soon').length,
+      byCategory: (id: string) => statuses.filter((x) => x.category === id && x.status !== 'ok').length,
+    };
+  }, [items, warningDays]);
 
   const go = (route: string) => {
     Haptics.selectionAsync().catch(() => {});
@@ -91,16 +94,24 @@ export function HomeScreen({ onNavigate, notice, onNoticeDone }: HomeProps) {
   const addTile = categories.find((c) => c.tint === 'add');
   const tiles = [...categories.filter((c) => c.tint !== 'add').slice(0, 5), ...(addTile ? [addTile] : [])];
 
-  const navMaxWidth = mode === 'phone' ? 560 : 520;
   const bottomClearance = NAV_HEIGHT + navOffset(insets.bottom) + 16;
 
-  const summary = (
-    <AttentionCard title="3 items need attention" subtitle={['2 expired', '1 expiring soon']} onPress={() => go('attention')} />
-  );
+  const needAttention = attention.expired + attention.soon;
+  const summary =
+    needAttention > 0 ? (
+      <AttentionCard
+        title={needAttention === 1 ? '1 item needs attention' : `${needAttention} items need attention`}
+        subtitle={[
+          ...(attention.expired ? [`${attention.expired} expired`] : []),
+          ...(attention.soon ? [`${attention.soon} expiring soon`] : []),
+        ]}
+        onPress={() => go('tab:reminders')}
+      />
+    ) : null;
 
   const categorySection = (
     <>
-      <SectionHeader title="Your categories" action="See all" onAction={() => go('categories')} />
+      <SectionHeader title="Your categories" action="See all" onAction={() => go('tab:items')} />
       <View style={[styles.grid, { rowGap: gridGap }]} onLayout={onGridLayout}>
         {tiles.map((c) => (
           <CategoryTile
@@ -108,11 +119,11 @@ export function HomeScreen({ onNavigate, notice, onNoticeDone }: HomeProps) {
             tint={c.tint}
             width={tileWidth}
             name={c.name}
-            sub={c.count === undefined ? c.sub : `${c.count + saved.filter((i) => i.category === c.id).length} items`}
-            status={c.status}
+            sub={c.count === undefined ? c.sub : `${(showSamples ? c.count : 0) + saved.filter((i) => i.category === c.id).length} items`}
+            status={c.count === undefined ? undefined : tileStatus(attention.byCategory(c.id))}
             art={categoryArt(c.art, compact ? 56 : 64)}
             compact={compact}
-            onPress={() => go(`category:${c.id}`)}
+            onPress={() => go(c.tint === 'add' ? 'tab:settings' : `category:${c.id}`)}
           />
         ))}
       </View>
@@ -121,22 +132,12 @@ export function HomeScreen({ onNavigate, notice, onNoticeDone }: HomeProps) {
 
   const upcomingSection = (first: boolean) => (
     <>
-      <SectionHeader title="Coming up next" action="View all" onAction={() => go('items')} first={first} />
-      <View style={styles.list}>
-        {upcoming.map((item) => {
-          const { pill, tone } = expiryPill(item.expiresOn);
-          return (
-            <ExpiryRow
-              key={item.id}
-              art={itemArt(item)}
-              title={item.name}
-              sub={[CATEGORY_NAMES[item.category], expiryPhrase(item.expiresOn)]}
-              pill={pill}
-              tone={tone}
-              onPress={() => go(`item:${item.id}`)}
-            />
-          );
-        })}
+      <SectionHeader title="Coming up next" action="View all" onAction={() => go('tab:items')} first={first} />
+      <View style={[styles.list, settings.compact && styles.listCompact]}>
+        {upcoming.map((item) => (
+          <ItemRow key={item.id} item={item} onPress={() => go('tab:items')} />
+        ))}
+        {upcoming.length === 0 && <Text style={styles.empty}>Nothing coming up. Scan a label to add an item.</Text>}
       </View>
     </>
   );
@@ -146,7 +147,7 @@ export function HomeScreen({ onNavigate, notice, onNoticeDone }: HomeProps) {
   return (
     <View style={[styles.root, { paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }]}>
       <View style={[styles.frame, frame]}>
-        <Header badge={3} gutter={0} onMenu={() => go('menu')} onBell={() => go('notifications')} />
+        <Header badge={badge} gutter={0} onMenu={() => go('tab:settings')} onBell={() => go('tab:reminders')} />
       </View>
       <ScrollView
         style={styles.scroll}
@@ -171,33 +172,28 @@ export function HomeScreen({ onNavigate, notice, onNoticeDone }: HomeProps) {
           )}
         </View>
       </ScrollView>
-      <BottomNav
-        active={activeTab}
-        badge={3}
-        insets={insets}
-        maxWidth={navMaxWidth}
-        onTab={(id) => {
-          setActiveTab(id);
-          go(`tab:${id}`);
-        }}
-        onScan={() => go('scan')}
-      />
-      {notice && <Toast key={notice} text={notice} bottom={bottomClearance} onDone={onNoticeDone} />}
+      {notice && <Toast key={notice} text={notice} bottom={bottomClearance} motion={motion} onDone={onNoticeDone} />}
     </View>
   );
 }
 
-function Toast({ text, bottom, onDone }: { text: string; bottom: number; onDone?: () => void }) {
-  const opacity = useRef(new Animated.Value(0)).current;
+function tileStatus(n: number) {
+  return n > 0 ? { label: `${n} expiring`, tone: 'amber' as const } : { label: 'All good', tone: 'green' as const };
+}
+
+function Toast({ text, bottom, motion, onDone }: { text: string; bottom: number; motion: boolean; onDone?: () => void }) {
+  const opacity = useRef(new Animated.Value(motion ? 0 : 1)).current;
   useEffect(() => {
+    // With animations off the toast appears and disappears without fading.
+    const fade = motion ? 200 : 0;
     const anim = Animated.sequence([
-      Animated.timing(opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 1, duration: fade, useNativeDriver: true }),
       Animated.delay(2600),
-      Animated.timing(opacity, { toValue: 0, duration: 220, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 0, duration: fade, useNativeDriver: true }),
     ]);
     anim.start(({ finished }) => finished && onDone?.());
     return () => anim.stop();
-  }, [opacity, onDone]);
+  }, [opacity, motion, onDone]);
   return (
     <Animated.View pointerEvents="none" style={[styles.toastWrap, { bottom, opacity }]} accessibilityLiveRegion="polite">
       <View style={styles.toast}>
@@ -221,6 +217,8 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   // 8px between "Coming up next" rows.
   list: { gap: 8 },
+  listCompact: { gap: 6 },
+  empty: { color: colors.textMuted, fontSize: 14, paddingVertical: 12 },
   toastWrap: { position: 'absolute', left: 16, right: 16, alignItems: 'center' },
   toast: {
     flexDirection: 'row',

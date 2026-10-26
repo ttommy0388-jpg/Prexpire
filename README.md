@@ -11,7 +11,11 @@ Prexpire is a mobile app for tracking expiry dates across food, medicine, househ
 
 The home screen adapts to iPhone and iPad in portrait and landscape: a single column on phones, a centered column with a one-row category grid on tablets in portrait, and a two-column layout (summary and categories beside upcoming items) in landscape. Live Scan uses a bottom sheet in portrait and a side panel in landscape.
 
-Categories and three upcoming items are still sample data (`src/data.ts`, `src/items.tsx`). Other taps do not navigate anywhere yet.
+- **Items** (Lists tab): every tracked item, filtered by category and sorted as chosen in Settings.
+- **Reminders**: items whose reminder is due (expired, or within the reminder timing) and the date each upcoming reminder falls on. The bell and tab badges count due reminders. Reminders are listed in the app only; nothing is sent as a notification yet.
+- **Settings**: notifications (reminders on/off, timing, daily summary, browser notification permission), appearance (compact rows, animations), expiry preferences (warning period, date format, sorting, show/hide expired), default category, sample items, camera and storage information, JSON/CSV export and Clear all data. Preferences are saved with AsyncStorage (`prexpire.settings.v1`, localStorage in the browser) and apply across the app. On the web the open tab is kept in the address, e.g. `#settings`.
+
+Category tile counts and three upcoming items are still sample data (`src/data.ts`, `src/items.tsx`); Settings can hide the sample items. Only the dark theme exists, and there is no notification delivery: the daily summary and reminder settings are saved for when it is built.
 
 ## Live Scan
 
@@ -52,16 +56,19 @@ eas build --profile preview --platform ios  # sign in with the Apple ID when ask
 
 When the build finishes, open its link on the iPhone and tap Install. On iOS 16 and later, turn on Settings → Privacy & Security → Developer Mode the first time. The `preview` profile is a standalone app; the `development` profile is a dev client that loads code from `npx expo start`.
 
-**Tests.** `npm test` runs the date parser and crop tests with Node's built-in test runner. `npm run typecheck` runs TypeScript.
+**Tests.** `npm test` runs the date parser, crop and preferences tests with Node's built-in test runner. `npm run typecheck` runs TypeScript.
 
 ## Project layout
 
 ```
-App.tsx                         root: home or scanner
+App.tsx                         root: tabs (Home, Items, Reminders, Settings), bottom nav, scanner
 src/theme.ts                    colors, category tints, radii, spacing, type scale
 src/layout.ts                   responsive layout modes (phone, tablet, split landscape) and grid sizing
 src/data.ts                     sample categories
 src/items.tsx                   item model, on-device storage (AsyncStorage), sample items
+src/settings.tsx                preferences provider (AsyncStorage), reduced-motion handling
+src/preferences.ts              preference values, date formatting, sorting, reminders, export (+ tests)
+src/platform/                   browser notification permission and file export, per platform
 src/scanner/                    date parser, crop math, camera + OCR per platform, scan loop (+ tests)
 scripts/copy-ocr-assets.js      copies the browser OCR files into public/ocr
 src/components/Art.tsx          SVG illustrations and the Prexpire mark
@@ -69,6 +76,12 @@ src/components/HomeComponents.tsx  header, alert card, tiles, rows, bottom nav
 src/components/ScanFrame.tsx    scanning frame with corner brackets
 src/components/ResultSheet.tsx  detected-date sheet: name, category, date check/edit, Add item
 src/screens/HomeScreen.tsx
+src/screens/ItemsScreen.tsx
+src/screens/RemindersScreen.tsx
+src/screens/SettingsScreen.tsx
+src/components/Page.tsx         header + title + scroll frame shared by the tabs
+src/components/SettingsRows.tsx settings sections, rows, toggles, option chips
+src/components/ItemRow.tsx      item row styled by the preferences
 src/screens/ScannerScreen.tsx   Live Scan
 plugins/withMlKitOcrModel.js    Android: preload the ML Kit text model
 assets/wordmark.png

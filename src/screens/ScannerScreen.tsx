@@ -56,7 +56,7 @@ function frameSize(area: Size, hintSpace: number) {
 
 export function ScannerScreen({ onClose, onSaved, category }: Props) {
   const insets = useSafeAreaInsets();
-  const { lastCategory, addItem } = useItems();
+  const { defaultCategory, addItem } = useItems();
   const [permission, requestPermission] = useCameraPermissions();
   const camera = useRef<ScannerCameraHandle>(null);
 
@@ -285,7 +285,7 @@ export function ScannerScreen({ onClose, onSaved, category }: Props) {
       // A new detection gets a fresh sheet; "Scan again" then a new read starts clean.
       key={detected ? state.detection.key : 'manual'}
       detection={detected ? state.detection : null}
-      initialCategory={category ?? lastCategory}
+      initialCategory={category ?? defaultCategory}
       layout={landscape ? 'side' : 'bottom'}
       maxHeight={landscape ? root.height : Math.round(root.height * 0.62)}
       bottomInset={insets.bottom}

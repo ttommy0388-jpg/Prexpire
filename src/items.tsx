@@ -1,9 +1,11 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { daysUntil } from './scanner/dateParser';
+import { useSettings } from './settings';
 
 // Items the user tracks. Items added in the app are saved on the device with AsyncStorage;
-// the three sample items from the prototype stay in memory so the home screen is not empty.
+// the three sample items from the prototype stay in memory so the home screen is not empty
+// (Settings can hide them).
 
 export type CategoryId = 'food' | 'medicine' | 'household' | 'skincare' | 'pantry';
 
@@ -59,7 +61,11 @@ type ItemsContext = {
   saved: Item[];
   ready: boolean;
   lastCategory: CategoryId;
+  // The category new items start in: the one chosen in Settings, or the last one used.
+  defaultCategory: CategoryId;
   addItem: (item: NewItem) => Promise<Item>;
+  // Deletes every saved item and the remembered category from storage.
+  clearSaved: () => Promise<void>;
 };
 
 const Ctx = createContext<ItemsContext | null>(null);
@@ -68,7 +74,9 @@ export function ItemsProvider({ children }: { children: ReactNode }) {
   const [saved, setSaved] = useState<Item[]>([]);
   const [ready, setReady] = useState(false);
   const [lastCategory, setLastCategory] = useState<CategoryId>('food');
-  const samples = useMemo(sampleItems, []);
+  const { settings } = useSettings();
+  const allSamples = useMemo(sampleItems, []);
+  const samples = settings.showSamples ? allSamples : [];
   // Writes go through this ref so two quick saves never overwrite each other.
   const savedRef = useRef<Item[]>([]);
 
@@ -108,9 +116,17 @@ export function ItemsProvider({ children }: { children: ReactNode }) {
     return item;
   }, []);
 
+  const clearSaved = useCallback(async () => {
+    await AsyncStorage.multiRemove([STORAGE_KEY, LAST_CATEGORY_KEY]);
+    savedRef.current = [];
+    setSaved([]);
+    setLastCategory('food');
+  }, []);
+
+  const defaultCategory = settings.defaultCategory === 'last' ? lastCategory : settings.defaultCategory;
   const value = useMemo(
-    () => ({ items: [...samples, ...saved], saved, ready, lastCategory, addItem }),
-    [samples, saved, ready, lastCategory, addItem],
+    () => ({ items: [...samples, ...saved], saved, ready, lastCategory, defaultCategory, addItem, clearSaved }),
+    [samples, saved, ready, lastCategory, defaultCategory, addItem, clearSaved],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -1,6 +1,7 @@
 import { memo, useEffect, useRef } from 'react';
 import { Animated, Easing, StyleSheet, View } from 'react-native';
 import { colors } from '../theme';
+import { useSettings } from '../settings';
 
 const CORNER = 30;
 const STROKE = 4;
@@ -12,8 +13,15 @@ type Props = { width: number; height: number; scanning: boolean; success: boolea
 // analysed, and a solid outline once a date has been confirmed.
 export const ScanFrame = memo(function ScanFrame({ width, height, scanning, success }: Props) {
   const sweep = useRef(new Animated.Value(0)).current;
+  // With animations off (Settings or the system's reduced motion) the line holds still mid-frame.
+  const { motion } = useSettings();
 
   useEffect(() => {
+    if (!motion) {
+      sweep.stopAnimation();
+      sweep.setValue(0.5);
+      return;
+    }
     if (!scanning) {
       sweep.stopAnimation();
       sweep.setValue(0);
@@ -27,7 +35,7 @@ export const ScanFrame = memo(function ScanFrame({ width, height, scanning, succ
     );
     loop.start();
     return () => loop.stop();
-  }, [scanning, sweep]);
+  }, [scanning, sweep, motion]);
 
   const color = success ? colors.mint : colors.scan;
   const translateY = sweep.interpolate({ inputRange: [0, 1], outputRange: [10, Math.max(10, height - 12)] });
