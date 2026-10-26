@@ -2,13 +2,12 @@
 
 *Know before it expires.*
 
-Prexpire is a mobile app for tracking expiry dates across food, medicine, household products, skincare and pantry items. This repository holds an Expo / React Native app with a launch screen, the home screen and a live expiry-date scanner.
+Prexpire is a mobile app for tracking expiry dates across food, medicine, household products, skincare and pantry items. This repository holds an Expo / React Native app (also built for the web with react-native-web) with the home screen and a live expiry-date scanner. It opens straight to Home.
 
 ## What's here
 
-- **Launch screen**: the Prexpire mark, wordmark and tagline, which fade into the home screen.
 - **Home screen**: an "items need attention" alert, a grid of categories, a "Coming up next" list of items expiring soon, and a floating bottom nav (Home, Lists, Scan a label, Reminders, Settings).
-- **Live Scan**: opened from the scan button in the bottom nav. The camera fills the screen behind a scanning frame; the text inside the frame is read on the device, the expiry date is found, and the user checks it, names the item, picks a category and adds it. Added items are saved on the device and appear in "Coming up next" and the category counts.
+- **Live Scan**: opened from the scan button in the bottom nav. The camera fills the screen behind a scanning frame; the text inside the frame is read on the device or in the browser, the expiry date is found, and the user checks it, names the item, picks a category and adds it. Added items are saved on the device and appear in "Coming up next" and the category counts.
 
 The home screen adapts to iPhone and iPad in portrait and landscape: a single column on phones, a centered column with a one-row category grid on tablets in portrait, and a two-column layout (summary and categories beside upcoming items) in landscape. Live Scan uses a bottom sheet in portrait and a side panel in landscape.
 
@@ -16,16 +15,23 @@ Categories and three upcoming items are still sample data (`src/data.ts`, `src/i
 
 ## Live Scan
 
-**How it works.** `expo-camera` shows the preview. About once a second the scanner takes a still, crops it to the area behind the frame (`src/scanner/cropMath.ts`) and reads the text on the device with `expo-text-extractor` (Apple Vision on iOS, Google ML Kit on Android). `src/scanner/dateParser.ts` then finds the expiry date:
+**How it works.** About once a second the scanner grabs one camera frame, crops it to the area behind the frame (`src/scanner/cropMath.ts`) and reads the text. Passes never overlap. `src/scanner/ScannerCamera.*` holds the camera and OCR for each platform:
+
+- **Web** (`ScannerCamera.web.tsx`): `getUserMedia` with the rear camera preferred, the flashlight when the browser exposes torch control (Chrome on Android; Safari on iPhone does not), and Tesseract.js reading a grayscale canvas crop in the browser. The Tesseract worker, WebAssembly core and English model are served by the app from `/ocr/` (copied by `scripts/copy-ocr-assets.js` after `npm install`), so nothing loads from a CDN and frames are never uploaded. The camera stops when the scanner closes or the tab is hidden.
+- **iOS / Android** (`ScannerCamera.tsx`): `expo-camera` stills read with `expo-text-extractor` (Apple Vision on iOS, Google ML Kit on Android).
+
+`src/scanner/dateParser.ts` (no camera or OCR code, tested on its own) then finds the expiry date:
 
 - Labels: EXP, EXP DATE, EXPIRY, BEST BEFORE (END), BB, BBE, USE BY, BEST BY. Dates next to MFG / MFD / PACKED / PROD, LOT or BATCH are ignored; SELL BY is flagged.
-- Formats: `27 OCT 2026`, `27OCT26`, `Oct 27, 2026`, `27/10/2026`, `10/27/2026`, `27.10.26`, `2026-10-27`, month-only `EXP 10/2027` and `EXP 10/27` (end of that month), and `EXP 20261027`. Common OCR slips inside numbers (O→0, I/L→1, S→5, B→8) are corrected.
+- Formats: `27 OCT 2026`, `27 October 2026`, `27OCT26`, `Oct 27, 2026`, `27-10-2026`, `27/10/2026`, `10/27/2026`, `27.10.26`, `2026-10-27`, month-only `EXP 10/2027` and `EXP 10/27` (end of that month), and `EXP 20261027`. Common OCR slips inside numbers (O→0, I/L→1, S→5, B→8) are corrected. Calendar dates are validated, including leap years. `BEST BEFORE 27 OCT` without a year uses the next 27 October and asks the user to check the year.
 - Day/month order: when both readings are valid (03/04/2027) the device region decides which is listed first, and the user has to pick one.
-- A date only counts once two of the last three reads agree. Dates without an expiry label, several competing dates, past dates and sell-by dates need an explicit "Yes, this is the expiry date" before the item can be added.
+- A date only counts once two of the last three reads agree. Dates without an expiry label, several competing dates, past dates, missing years and sell-by dates need an explicit "Yes, this is the expiry date" before the item can be added.
 
-Camera frames never leave the device; stills are deleted right after they are read.
+Camera frames never leave the device; native stills are deleted right after they are read.
 
-**A development build is required.** Text recognition is native code that Expo Go does not contain. In Expo Go the scanner shows the camera, says that reading dates needs the development build, and offers manual date entry. The web build has no text recognition either; the camera and manual entry work there. To run the real scanner:
+**Web: camera needs https.** Browsers only open the camera on `https://` sites or `localhost`. The claude.ai preview link does not allow camera access, so live scanning on the web needs the app hosted on its own https site. Manual date entry works everywhere.
+
+**Phones: a development build is required.** Native text recognition is not in Expo Go. In Expo Go the scanner shows the camera, says that reading dates needs the development build, and offers manual date entry. To run the native scanner:
 
 ```bash
 npm install
@@ -51,18 +57,18 @@ When the build finishes, open its link on the iPhone and tap Install. On iOS 16 
 ## Project layout
 
 ```
-App.tsx                         root: home or scanner, with the launch overlay
+App.tsx                         root: home or scanner
 src/theme.ts                    colors, category tints, radii, spacing, type scale
 src/layout.ts                   responsive layout modes (phone, tablet, split landscape) and grid sizing
 src/data.ts                     sample categories
 src/items.tsx                   item model, on-device storage (AsyncStorage), sample items
-src/scanner/                    date parser, crop math, OCR wrapper, scan loop (+ tests)
+src/scanner/                    date parser, crop math, camera + OCR per platform, scan loop (+ tests)
+scripts/copy-ocr-assets.js      copies the browser OCR files into public/ocr
 src/components/Art.tsx          SVG illustrations and the Prexpire mark
 src/components/HomeComponents.tsx  header, alert card, tiles, rows, bottom nav
 src/components/ScanFrame.tsx    scanning frame with corner brackets
 src/components/ResultSheet.tsx  detected-date sheet: name, category, date check/edit, Add item
 src/screens/HomeScreen.tsx
-src/screens/LaunchScreen.tsx
 src/screens/ScannerScreen.tsx   Live Scan
 plugins/withMlKitOcrModel.js    Android: preload the ML Kit text model
 assets/wordmark.png
@@ -74,7 +80,8 @@ prototype/index.html            the original single-file web build of the protot
 ```bash
 npm install
 npx expo install --fix   # align package versions with your Expo SDK
-npm run web              # or: npm run ios / npm run android (Expo Go: no date reading, see above)
+npm run web              # http://localhost:8081, the camera works on localhost
+npm run export:web       # static site in dist/, host it on any https server
 ```
 
 `prototype/index.html` is the compiled web build the source was recovered from. Open it in a browser to see the prototype without installing anything.

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
+  ActivityIndicator,
   AppState,
   BackHandler,
   KeyboardAvoidingView,
@@ -13,7 +14,7 @@ import {
   type LayoutRectangle,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { colors, radius } from '../theme';
@@ -22,7 +23,9 @@ import { ResultSheet, type SaveInput } from '../components/ResultSheet';
 import { useItems, type CategoryId, type Item } from '../items';
 import { ocrAvailability } from '../scanner/ocr';
 import { useExpiryScanner, type ScanHint } from '../scanner/useExpiryScanner';
-import type { Rect, Size } from '../scanner/cropMath';
+import type { Size } from '../scanner/cropMath';
+import { ScannerCamera } from '../scanner/ScannerCamera';
+import type { CameraErrorKind, FrameGeometry, ScannerCameraHandle } from '../scanner/ScannerCamera.types';
 
 type Props = {
   onClose: () => void;
@@ -33,6 +36,7 @@ type Props = {
 
 const HINTS: Record<ScanHint, { icon: keyof typeof Ionicons.glyphMap; text: string }> = {
   aim: { icon: 'scan-outline', text: 'Keep the date inside the frame' },
+  'text-found': { icon: 'text-outline', text: 'Text found. Looking for the expiry date…' },
   'hold-steady': { icon: 'hourglass-outline', text: 'Reading the date… hold steady' },
   'low-light': { icon: 'sunny-outline', text: 'Move closer or improve the lighting' },
   closer: { icon: 'resize-outline', text: 'Move closer so the date fills the frame' },
@@ -40,20 +44,6 @@ const HINTS: Record<ScanHint, { icon: keyof typeof Ionicons.glyphMap; text: stri
   unclear: { icon: 'eye-outline', text: "Couldn't read that date clearly. Hold steady" },
   'ocr-error': { icon: 'refresh-outline', text: 'Having trouble reading. Hold the camera steady' },
 };
-
-// Picks a capture size that is sharp enough for small print but quick to process.
-// iOS lists session presets; Android lists pixel sizes for the camera's 4:3 sensor.
-function choosePictureSize(sizes: string[]): string | undefined {
-  if (sizes.includes('1920x1080')) return '1920x1080';
-  const parsed = sizes
-    .map((s) => {
-      const [w, h] = s.split('x').map(Number);
-      return { s, long: Math.max(w, h), short: Math.min(w, h) };
-    })
-    .filter((p) => p.long > 0 && Math.abs(p.long / p.short - 4 / 3) < 0.02 && p.long >= 1600 && p.long <= 2600)
-    .sort((a, b) => a.long - b.long);
-  return parsed[0]?.s;
-}
 
 function frameSize(area: Size, hintSpace: number) {
   const width = Math.max(220, Math.min(area.width - 40, 560));
@@ -68,16 +58,19 @@ export function ScannerScreen({ onClose, onSaved, category }: Props) {
   const insets = useSafeAreaInsets();
   const { lastCategory, addItem } = useItems();
   const [permission, requestPermission] = useCameraPermissions();
-  const camera = useRef<CameraView>(null);
+  const camera = useRef<ScannerCameraHandle>(null);
 
   const [root, setRoot] = useState<Size>({ width: 0, height: 0 });
   const [area, setArea] = useState<LayoutRectangle | null>(null);
   const [cameraReady, setCameraReady] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const [pictureSize, setPictureSize] = useState<string | undefined>();
+  const [cameraError, setCameraError] = useState<{ kind: CameraErrorKind; message: string } | null>(null);
+  const [torchSupported, setTorchSupported] = useState(false);
+  // Bumped by "Try again" so a camera that failed to start is mounted afresh.
+  const [cameraKey, setCameraKey] = useState(0);
   const [torch, setTorch] = useState(false);
   const [appActive, setAppActive] = useState(AppState.currentState === 'active');
   const [manual, setManual] = useState(false);
+  const [askedPermission, setAskedPermission] = useState(false);
 
   const landscape = root.width > root.height && root.height > 0;
   const granted = !!permission?.granted;
@@ -110,7 +103,7 @@ export function ScannerScreen({ onClose, onSaved, category }: Props) {
     const y = Math.max(12, (area.height - frame.height - hintSpace) / 2);
     return { x, y, width: frame.width, height: frame.height };
   }, [area, frame]);
-  const geometry = useRef<{ view: Size; frame: Rect } | null>(null);
+  const geometry = useRef<FrameGeometry | null>(null);
   geometry.current =
     area && frameInArea && root.width ? { view: root, frame: { ...frameInArea, x: frameInArea.x + area.x, y: frameInArea.y + area.y } } : null;
 
@@ -126,17 +119,19 @@ export function ScannerScreen({ onClose, onSaved, category }: Props) {
     if (detected) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
   }, [detected]);
 
-  const onCameraReady = useCallback(async () => {
+  const onCameraReady = useCallback(({ torch: hasTorch }: { torch: boolean }) => {
     setCameraReady(true);
-    if (pictureSize || Platform.OS === 'web') return;
-    try {
-      const sizes = await camera.current?.getAvailablePictureSizesAsync();
-      const chosen = sizes && choosePictureSize(sizes);
-      if (chosen) setPictureSize(chosen);
-    } catch {
-      // The default size works; it is just slower to process.
-    }
-  }, [pictureSize]);
+    setTorchSupported(hasTorch);
+  }, []);
+  const onCameraError = useCallback((kind: CameraErrorKind, message: string) => {
+    setCameraReady(false);
+    setCameraError({ kind, message });
+  }, []);
+  const retryCamera = useCallback(() => {
+    setCameraError(null);
+    setCameraReady(false);
+    setCameraKey((k) => k + 1);
+  }, []);
 
   const onAdd = useCallback(
     async ({ name, category: cat, date }: SaveInput) => {
@@ -164,7 +159,7 @@ export function ScannerScreen({ onClose, onSaved, category }: Props) {
     setArea((prev) => (prev && prev.x === l.x && prev.y === l.y && prev.width === l.width && prev.height === l.height ? prev : l));
   };
 
-  const torchAvailable = Platform.OS !== 'web' && granted && cameraReady && !cameraError;
+  const torchAvailable = torchSupported && granted && cameraReady && !cameraError;
 
   const header = (
     <View style={[s.header, { paddingTop: insets.top + 6, paddingLeft: insets.left + 16, paddingRight: (landscape && sheetOpen ? 0 : insets.right) + 16 }]}>
@@ -187,7 +182,7 @@ export function ScannerScreen({ onClose, onSaved, category }: Props) {
           <Ionicons name={torch ? 'flash' : 'flash-outline'} size={21} color={torch ? colors.scanInk : colors.text} />
         </Pressable>
       </View>
-      <Text style={s.instruction}>Point your camera at an expiry date.</Text>
+      <Text style={s.instruction}>Point at an expiry date.</Text>
     </View>
   );
 
@@ -197,11 +192,21 @@ export function ScannerScreen({ onClose, onSaved, category }: Props) {
   } else if (!granted) {
     body = (
       <Notice
-        icon="camera-outline"
-        title="Allow camera access"
-        text="Prexpire reads expiry dates through your camera. Images are processed on this device and never uploaded."
-        action={permission.canAskAgain ? 'Allow camera' : 'Open Settings'}
-        onAction={() => (permission.canAskAgain ? requestPermission() : Linking.openSettings())}
+        icon={askedPermission && permission.status === 'denied' ? 'lock-closed-outline' : 'camera-outline'}
+        title={askedPermission && permission.status === 'denied' ? 'Camera access blocked' : 'Allow camera access'}
+        text={
+          askedPermission && permission.status === 'denied'
+            ? Platform.OS === 'web'
+              ? 'Your browser blocked the camera for this site. Allow it in the browser’s site settings (in Safari: the aA button → Website Settings → Camera), then try again.'
+              : 'Prexpire needs the camera to read expiry dates. Allow it in Settings, then come back.'
+            : 'Prexpire reads expiry dates through your camera. Images are processed on this device and never uploaded.'
+        }
+        action={permission.canAskAgain || Platform.OS === 'web' ? (askedPermission ? 'Try again' : 'Allow camera') : 'Open Settings'}
+        onAction={() => {
+          setAskedPermission(true);
+          if (permission.canAskAgain || Platform.OS === 'web') requestPermission();
+          else Linking.openSettings();
+        }}
         secondary="Enter date manually"
         onSecondary={() => setManual(true)}
         hidden={manual}
@@ -210,9 +215,11 @@ export function ScannerScreen({ onClose, onSaved, category }: Props) {
   } else if (cameraError) {
     body = (
       <Notice
-        icon="videocam-off-outline"
-        title="Camera unavailable"
-        text={`The camera couldn't start. ${cameraError}`}
+        icon={cameraError.kind === 'ocr' ? 'document-text-outline' : cameraError.kind === 'denied' ? 'lock-closed-outline' : 'videocam-off-outline'}
+        title={cameraError.kind === 'ocr' ? 'Text reader unavailable' : cameraError.kind === 'denied' ? 'Camera access blocked' : 'Camera unavailable'}
+        text={cameraError.message}
+        action="Try again"
+        onAction={retryCamera}
         secondary="Enter date manually"
         onSecondary={() => setManual(true)}
         hidden={manual}
@@ -241,19 +248,27 @@ export function ScannerScreen({ onClose, onSaved, category }: Props) {
             manual ? null : (
               <View style={s.unavailable}>
                 <Text style={s.unavailableText}>
-                  {ocrAvailability === 'unsupported-platform'
-                    ? 'Reading dates from the camera works in the iOS and Android app, not on the web.'
-                    : 'Reading dates needs the Prexpire development build. Expo Go can show the camera but cannot read text.'}
+                  Reading dates needs the Prexpire development build. Expo Go can show the camera but cannot read text.
                 </Text>
                 <Pressable onPress={() => setManual(true)} style={s.linkBtn} accessibilityRole="button">
                   <Text style={s.linkText}>Enter date manually</Text>
                 </Pressable>
               </View>
             )
+          ) : !cameraReady ? (
+            <View style={s.hint} accessibilityLiveRegion="polite">
+              <ActivityIndicator size="small" color={colors.scan} />
+              <Text style={s.hintText}>Starting the scanner…</Text>
+            </View>
           ) : (
             hint && (
               <View style={s.hint} accessibilityLiveRegion="polite">
-                <Ionicons name={hint.icon} size={17} color={state.status === 'scanning' && state.hint !== 'aim' && state.hint !== 'hold-steady' ? colors.amberText : colors.scan} />
+                {state.status === 'scanning' && state.hint === 'hold-steady' ? (
+                  // Text was found and is being read: a small spinner, the camera stays visible.
+                  <ActivityIndicator size="small" color={colors.scan} />
+                ) : (
+                  <Ionicons name={hint.icon} size={17} color={state.status === 'scanning' && state.hint !== 'aim' ? colors.amberText : colors.scan} />
+                )}
                 <Text style={s.hintText} numberOfLines={2}>
                   {hint.text}
                 </Text>
@@ -283,17 +298,13 @@ export function ScannerScreen({ onClose, onSaved, category }: Props) {
   return (
     <View style={s.root} onLayout={(e) => setRoot({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}>
       {granted && !cameraError && (
-        <CameraView
+        <ScannerCamera
+          key={cameraKey}
           ref={camera}
-          style={StyleSheet.absoluteFill}
-          facing="back"
-          active={appActive}
-          enableTorch={torch && appActive}
-          animateShutter={false}
-          pictureSize={pictureSize}
-          autofocus="on"
-          onCameraReady={onCameraReady}
-          onMountError={(e) => setCameraError(e.message || 'No camera was found on this device.')}
+          active={appActive && !manual}
+          torch={torch && appActive}
+          onReady={onCameraReady}
+          onError={onCameraError}
         />
       )}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[StyleSheet.absoluteFill, landscape && s.row]}>

@@ -8,7 +8,7 @@ export type Category = {
   id: string;
   tint: Tint;
   name: string;
-  sub: string;
+  sub?: string;
   // Sample item count; items added in the app are counted on top.
   count?: number;
   status?: { label: string; tone: Tone };
@@ -21,5 +21,5 @@ export const categories: Category[] = [
   { id: 'household', tint: 'household', name: 'Household', sub: '8 items', count: 8, status: { label: 'All good', tone: 'green' }, art: 'house' },
   { id: 'skincare', tint: 'skincare', name: 'Skincare', sub: '4 items', count: 4, status: { label: 'All good', tone: 'green' }, art: 'pump' },
   { id: 'pantry', tint: 'pantry', name: 'Pantry', sub: '6 items', count: 6, status: { label: 'All good', tone: 'green' }, art: 'jar' },
-  { id: 'add', tint: 'add', name: 'Add category', sub: 'Customize', art: 'add' },
+  { id: 'add', tint: 'add', name: 'Add category', art: 'add' },
 ];

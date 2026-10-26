@@ -174,3 +174,39 @@ test('region to day order', () => {
   assert.equal(dayOrderForRegion('GB'), 'DMY');
   assert.equal(dayOrderForRegion(null), 'DMY');
 });
+
+test('spec formats: long month names, dashes, EXPIRES', () => {
+  assert.equal(found(['EXPIRES 27 October 2026']).primary.iso, '2026-10-27');
+  assert.equal(found(['EXP 27-10-2026']).primary.iso, '2026-10-27');
+  assert.equal(found(['USE BY 10/27/2026']).primary.iso, '2026-10-27');
+  assert.equal(found(['Expires: 2026-10-27']).label, 'expiry');
+});
+
+test('missing year is assumed and must be confirmed', () => {
+  const a = found(['BEST BEFORE 27 OCT']);
+  assert.equal(a.primary.iso, '2026-10-27');
+  assert.ok(a.reasons.includes('no-year'));
+  assert.equal(a.confidence, 'medium');
+  // Already passed this year, so next year.
+  assert.equal(found(['USE BY 3 MAR']).primary.iso, '2027-03-03');
+  // Without a label a bare "27 OCT" is not read.
+  assert.equal(parseExpiry(['27 OCT'], uk).kind, 'none');
+  // A full date still wins over the yearless reading.
+  assert.equal(found(['EXP 27 OCT 2027']).reasons.includes('no-year'), false);
+});
+
+test('nutrition and weights are not dates', () => {
+  assert.equal(parseExpiry(['Energy 450kJ / 108kcal', 'Fat 3.5g  Protein 10g', 'NET WT 500g'], uk).kind, 'none');
+});
+
+test('leap years', () => {
+  assert.equal(found(['EXP 29/02/2028']).primary.iso, '2028-02-29');
+  assert.deepEqual(parseExpiry(['EXP 29/02/2027'], uk), { kind: 'none', hint: 'invalid-date' });
+  assert.equal(found(['EXP 02/2028']).primary.iso, '2028-02-29');
+});
+
+test('several dates: the labelled expiry wins over the earlier ones', () => {
+  const r = found(['PROD 01/09/2026', 'LOT 2629 01/09/2026', 'BEST BEFORE 01/03/2027']);
+  assert.equal(r.label, 'expiry');
+  assert.equal(r.primary.iso.slice(0, 4), '2027');
+});

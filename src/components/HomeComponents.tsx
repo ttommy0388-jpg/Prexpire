@@ -58,7 +58,7 @@ type CategoryTileProps = {
   tint: Tint;
   art: ReactNode;
   name: string;
-  sub: string;
+  sub?: string;
   status?: { label: string; tone: Tone };
   width: number;
   compact?: boolean;
@@ -73,7 +73,7 @@ export function CategoryTile({ tint, art, name, sub, status, width, compact = fa
         colors={[t.top, t.bottom]}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
-        style={[s.tile, compact && s.tileCompact, { borderColor: t.border }]}
+        style={[s.tile, compact && s.tileCompact, !sub && !status && s.tileCentered, { borderColor: t.border }]}
       >
         <View style={[s.tileArt, compact && s.tileArtCompact, !status && s.tileArtTight]}>{art}</View>
         {/* Tiles without a status line (Add category) have room for a two-line name on narrow tiles. */}
@@ -85,9 +85,11 @@ export function CategoryTile({ tint, art, name, sub, status, width, compact = fa
         >
           {name}
         </Text>
-        <Text style={[s.tileSub, compact && s.textCompact]} numberOfLines={1}>
-          {sub}
-        </Text>
+        {!!sub && (
+          <Text style={[s.tileSub, compact && s.textCompact]} numberOfLines={1}>
+            {sub}
+          </Text>
+        )}
         {status ? (
           <View style={s.status}>
             <View style={[s.dot, { backgroundColor: status.tone === 'amber' ? colors.amber : colors.green }]} />
@@ -98,9 +100,9 @@ export function CategoryTile({ tint, art, name, sub, status, width, compact = fa
               {status.label}
             </Text>
           </View>
-        ) : (
+        ) : sub ? (
           <View style={s.statusSpacer} />
-        )}
+        ) : null}
       </LinearGradient>
     </Pressable>
   );
@@ -262,6 +264,8 @@ const s = StyleSheet.create({
   tileCompact: { height: 146, paddingHorizontal: 6, paddingTop: 10 },
   tileArtCompact: { height: 58, marginBottom: 6 },
   tileArtTight: { marginBottom: 2 },
+  // Tiles with only an icon and a name (Add category) centre them in the tile.
+  tileCentered: { justifyContent: 'center', paddingTop: 0, paddingBottom: 4 },
   tileNameCompact: { fontSize: 14 },
   textCompact: { fontSize: 12.5 },
   tileName: { color: colors.text, ...type.tileName, textAlign: 'center' },

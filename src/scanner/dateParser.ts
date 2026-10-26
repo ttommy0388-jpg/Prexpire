@@ -15,6 +15,8 @@ export type Interpretation = {
   // ISO calendar date, YYYY-MM-DD. Month-only dates ("EXP 10/2026") use the last day of the month.
   iso: string;
   precision: Precision;
+  // The label printed no year ("BEST BEFORE 27 OCT"); the next such date was assumed.
+  yearGuessed?: boolean;
 };
 
 export type DateCandidate = {
@@ -37,7 +39,9 @@ export type ConfirmReason =
   // The date has already passed.
   | 'in-past'
   // Labelled SELL BY / DISPLAY UNTIL, which is not the same as an expiry date.
-  | 'sell-by';
+  | 'sell-by'
+  // No year was printed, so it was assumed.
+  | 'no-year';
 
 export type ScanParseResult =
   | {
@@ -219,6 +223,20 @@ const PATTERNS: Pattern[] = [
     labelledOnly: true,
     read: (m) => [toMonth(makeYear(m[2]), Number(m[1]))].filter(Boolean) as Interpretation[],
   },
+  // BEST BEFORE 27 OCT (no year), only right after an expiry label. The year is the next
+  // time that day comes round, and the user is asked to check it.
+  {
+    re: new RegExp(`${NB}(\\d{1,2})(?:ST|ND|RD|TH)?${SP}(${MONTH_ALT})(?![A-Z0-9])(?![\\s./,\\-]*\\d)`, 'g'),
+    labelledOnly: true,
+    read: (m, opts) => {
+      const t = opts.today;
+      const month = MONTHS[m[2]];
+      const day = Number(m[1]);
+      const thisYear = toDay(t.getFullYear(), month, day);
+      const pick = thisYear && thisYear.iso >= isoToday(t) ? thisYear : toDay(t.getFullYear() + 1, month, day);
+      return pick ? [{ ...pick, yearGuessed: true }] : [];
+    },
+  },
   // EXP 20261027, only right after an expiry label.
   {
     re: new RegExp(`${NB}(20\\d{2})(\\d{2})(\\d{2})${NA}`, 'g'),
@@ -360,6 +378,7 @@ export function parseExpiry(lines: string[], opts: ParseOptions): ScanParseResul
   if (alternatives.length) reasons.push('ambiguous-order');
   if (primary.precision === 'month') reasons.push('month-only');
   if (primary.iso < isoToday(opts.today)) reasons.push('in-past');
+  if (primary.yearGuessed) reasons.push('no-year');
 
   // Month-only expiry with a clear label is how medicine is printed; that alone is not doubt.
   const doubts = reasons.filter((r) => r !== 'month-only');

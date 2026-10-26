@@ -28,6 +28,7 @@ const REASON_TEXT: Partial<Record<ConfirmReason, string>> = {
   'month-only': 'Only a month is printed. The item will expire at the end of that month.',
   'in-past': 'This date has already passed.',
   'sell-by': 'This is a sell-by date, which can be earlier than the real expiry date.',
+  'no-year': 'No year is printed, so the next time this date comes round was used. Check the year.',
 };
 
 export type SaveInput = { name: string; category: CategoryId; date: Interpretation };

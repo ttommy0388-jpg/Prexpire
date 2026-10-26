@@ -3,7 +3,6 @@ import { View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { HomeScreen } from './src/screens/HomeScreen';
-import { LaunchScreen } from './src/screens/LaunchScreen';
 import { ScannerScreen } from './src/screens/ScannerScreen';
 import { ItemsProvider, type Item } from './src/items';
 import { formatDate } from './src/scanner/dateParser';
@@ -11,10 +10,8 @@ import { formatDate } from './src/scanner/dateParser';
 type Route = 'home' | 'scan';
 
 export default function App() {
-  const [showLaunch, setShowLaunch] = useState(true);
   const [route, setRoute] = useState<Route>('home');
   const [notice, setNotice] = useState<string | null>(null);
-  const onLaunchDone = useCallback(() => setShowLaunch(false), []);
 
   const onNavigate = useCallback((to: string) => {
     if (to === 'scan') setRoute('scan');
@@ -39,7 +36,6 @@ export default function App() {
           ) : (
             <HomeScreen onNavigate={onNavigate} notice={notice} onNoticeDone={clearNotice} />
           )}
-          {showLaunch && <LaunchScreen onDone={onLaunchDone} />}
         </View>
       </ItemsProvider>
     </SafeAreaProvider>
