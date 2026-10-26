@@ -58,7 +58,7 @@ type CategoryTileProps = {
   tint: Tint;
   art: ReactNode;
   name: string;
-  sub: string;
+  sub?: string;
   status?: { label: string; tone: Tone };
   width: number;
   compact?: boolean;
@@ -73,7 +73,7 @@ export function CategoryTile({ tint, art, name, sub, status, width, compact = fa
         colors={[t.top, t.bottom]}
         start={{ x: 0.5, y: 0 }}
         end={{ x: 0.5, y: 1 }}
-        style={[s.tile, compact && s.tileCompact, { borderColor: t.border }]}
+        style={[s.tile, compact && s.tileCompact, !sub && !status && s.tileCentered, { borderColor: t.border }]}
       >
         <View style={[s.tileArt, compact && s.tileArtCompact, !status && s.tileArtTight]}>{art}</View>
         {/* Tiles without a status line (Add category) have room for a two-line name on narrow tiles. */}
@@ -85,9 +85,11 @@ export function CategoryTile({ tint, art, name, sub, status, width, compact = fa
         >
           {name}
         </Text>
-        <Text style={[s.tileSub, compact && s.textCompact]} numberOfLines={1}>
-          {sub}
-        </Text>
+        {!!sub && (
+          <Text style={[s.tileSub, compact && s.textCompact]} numberOfLines={1}>
+            {sub}
+          </Text>
+        )}
         {status ? (
           <View style={s.status}>
             <View style={[s.dot, { backgroundColor: status.tone === 'amber' ? colors.amber : colors.green }]} />
@@ -98,33 +100,49 @@ export function CategoryTile({ tint, art, name, sub, status, width, compact = fa
               {status.label}
             </Text>
           </View>
-        ) : (
+        ) : sub ? (
           <View style={s.statusSpacer} />
-        )}
+        ) : null}
       </LinearGradient>
     </Pressable>
   );
 }
 
-type ExpiryRowProps = { art: ReactNode; title: string; sub: string[]; pill: string; tone: Tone; onPress: () => void };
+type ExpiryRowProps = {
+  art: ReactNode;
+  title: string;
+  sub: string[];
+  pill: string;
+  tone: Tone;
+  // Compact layout (Settings): shorter rows with a one-line subtitle.
+  compact?: boolean;
+  onPress?: () => void;
+};
 
-export function ExpiryRow({ art, title, sub, pill, tone, onPress }: ExpiryRowProps) {
+export function ExpiryRow({ art, title, sub, pill, tone, compact = false, onPress }: ExpiryRowProps) {
   const p = pills[tone];
-  return (
-    <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => [s.row, pressed && s.pressed]}>
-      <View style={s.rowIcon}>{art}</View>
+  const content = (
+    <>
+      <View style={[s.rowIcon, compact && s.rowIconCompact]}>{art}</View>
       <View style={{ flex: 1 }}>
-        <Text style={s.rowTitle} numberOfLines={1}>
+        <Text style={[s.rowTitle, compact && s.rowTitleCompact]} numberOfLines={1}>
           {title}
         </Text>
-        <Text style={s.rowSub} numberOfLines={2}>
+        <Text style={s.rowSub} numberOfLines={compact ? 1 : 2}>
           {sub.join('  •  ')}
         </Text>
       </View>
-      <View style={[s.pill, { backgroundColor: p.bg, borderColor: p.border }]}>
-        <Text style={[s.pillText, { color: p.text }]}>{pill}</Text>
+      <View style={[s.pill, compact && s.pillCompact, { backgroundColor: p.bg, borderColor: p.border }]}>
+        <Text style={[s.pillText, compact && s.pillTextCompact, { color: p.text }]}>{pill}</Text>
       </View>
-      <Ionicons name="chevron-forward" size={20} color={colors.textMuted} style={{ marginLeft: 2 }} />
+      {onPress && <Ionicons name="chevron-forward" size={20} color={colors.textMuted} style={{ marginLeft: 2 }} />}
+    </>
+  );
+  // Rows without a destination are plain text, not buttons.
+  if (!onPress) return <View style={[s.row, compact && s.rowCompact]}>{content}</View>;
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" style={({ pressed }) => [s.row, compact && s.rowCompact, pressed && s.pressed]}>
+      {content}
     </Pressable>
   );
 }
@@ -163,7 +181,7 @@ export function BottomNav({ active, badge, insets, maxWidth = 560, onTab, onScan
         onPress={() => onTab(tab.id)}
         style={s.tab}
         accessibilityRole="tab"
-        accessibilityState={{ selected }}
+        aria-selected={selected}
         accessibilityLabel={tab.label}
       >
         <View>
@@ -262,6 +280,8 @@ const s = StyleSheet.create({
   tileCompact: { height: 146, paddingHorizontal: 6, paddingTop: 10 },
   tileArtCompact: { height: 58, marginBottom: 6 },
   tileArtTight: { marginBottom: 2 },
+  // Tiles with only an icon and a name (Add category) centre them in the tile.
+  tileCentered: { justifyContent: 'center', paddingTop: 0, paddingBottom: 4 },
   tileNameCompact: { fontSize: 14 },
   textCompact: { fontSize: 12.5 },
   tileName: { color: colors.text, ...type.tileName, textAlign: 'center' },
@@ -284,10 +304,15 @@ const s = StyleSheet.create({
     gap: 11,
   },
   rowIcon: { width: 44, height: 40, borderRadius: radius.tile, backgroundColor: colors.iconTile, alignItems: 'center', justifyContent: 'center' },
+  rowCompact: { minHeight: 44, paddingVertical: 4, gap: 9 },
+  rowIconCompact: { width: 36, height: 32, borderRadius: 10 },
   rowTitle: { color: colors.text, ...type.rowTitle },
+  rowTitleCompact: { fontSize: 14.5 },
   rowSub: { color: colors.textMuted, ...type.rowSub, fontSize: 12.5, marginTop: 1 },
   pill: { height: 30, paddingHorizontal: 11, borderRadius: radius.pill, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   pillText: { ...type.pill },
+  pillCompact: { height: 26, paddingHorizontal: 9 },
+  pillTextCompact: { fontSize: 13 },
   navWrap: { position: 'absolute', alignItems: 'center' },
   navShadow: { width: '100%', borderRadius: 34, shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 10 },
   nav: {

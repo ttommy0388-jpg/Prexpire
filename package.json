@@ -8,22 +8,35 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "export:web": "expo export --platform web"
+    "export:web": "expo export --platform web",
+    "test": "node --test --experimental-strip-types --no-warnings \"src/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "postinstall": "node scripts/copy-ocr-assets.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@tesseract.js-data/eng": "^1.0.0",
     "expo": "~54.0.0",
+    "expo-camera": "~17.0.10",
+    "expo-dev-client": "~6.0.21",
+    "expo-file-system": "~19.0.24",
     "expo-haptics": "~15.0.7",
+    "expo-image-manipulator": "~14.0.8",
     "expo-linear-gradient": "~15.0.7",
+    "expo-localization": "~17.0.9",
     "expo-status-bar": "~3.0.8",
+    "expo-text-extractor": "^2.0.0",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.4",
     "react-native-safe-area-context": "~5.6.0",
     "react-native-svg": "15.12.1",
-    "react-native-web": "^0.21.0"
+    "react-native-web": "^0.21.0",
+    "tesseract.js": "^6.0.1"
   },
   "devDependencies": {
+    "@types/node": "^22.20.5",
     "@types/react": "~19.1.0",
     "typescript": "~5.9.2"
   }
