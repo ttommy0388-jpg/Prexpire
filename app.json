@@ -1,0 +1,11 @@
+{
+  "expo": {
+    "name": "Prexpire",
+    "slug": "prexpire",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#050D10",
+    "web": { "bundler": "metro" }
+  }
+}
